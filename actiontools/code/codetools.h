@@ -34,7 +34,7 @@ namespace Code
 		static void addClassToScriptEngine(const QString &name, QScriptEngine *scriptEngine)
 		{
 			QScriptValue metaObject = scriptEngine->newQMetaObject(&T::staticMetaObject, scriptEngine->newFunction(&T::constructor));
-			scriptEngine->globalObject().setProperty(name, metaObject);
+			scriptEngine->currentContext()->activationObject().setProperty(name, metaObject);
 		}
 		
 		template<typename T>

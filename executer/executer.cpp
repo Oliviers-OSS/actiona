@@ -49,110 +49,7 @@
 namespace LibExecuter
 {
 	Executer::ExecutionStatus Executer::mExecutionStatus = Executer::Stopped;
-	
-	Executer::Executer(QObject *parent)
-		: QObject(parent),
-		mExecutionWindow(new ExecutionWindow()),
-		mConsoleWidget(new ActionTools::ConsoleWidget()),
-		mScriptEngine(0),
-		mScriptAgent(0),
-		mHasExecuted(false),
-        mPauseInterrupt(false),
-        mShowDebuggerOnCodeError(true)
-	{
-		connect(mExecutionWindow, SIGNAL(canceled()), this, SLOT(stopExecution()));
-		connect(mExecutionWindow, SIGNAL(paused()), this, SLOT(pauseExecution()));
-		connect(mExecutionWindow, SIGNAL(debug()), this, SLOT(debugExecution()));
-		connect(&mExecutionTimer, SIGNAL(timeout()), this, SLOT(updateTimerProgress()));
-		connect(&mScriptEngineDebugger, SIGNAL(evaluationSuspended()), mExecutionWindow, SLOT(onEvaluationPaused()));
-		connect(&mScriptEngineDebugger, SIGNAL(evaluationResumed()), mExecutionWindow, SLOT(onEvaluationResumed()));
-		connect(&mScriptEngineDebugger, SIGNAL(evaluationSuspended()), this, SLOT(executionPaused()));
-		connect(&mScriptEngineDebugger, SIGNAL(evaluationResumed()), this, SLOT(executionResumed()));
 
-		mScriptEngineDebugger.setAutoShowStandardWindow(false);
-
-		mConsoleWidget->setWindowFlags(Qt::Tool |
-					   Qt::WindowStaysOnTopHint |
-					   Qt::CustomizeWindowHint |
-					   Qt::WindowTitleHint);
-	}
-
-	Executer::~Executer()
-	{
-		delete mExecutionWindow;
-		delete mConsoleWidget;
-	}
-	
-	void Executer::setup(ActionTools::Script *script,
-			   ActionTools::ActionFactory *actionFactory,
-			   bool showExecutionWindow,
-			   int executionWindowPosition,
-			   int executionWindowScreen,
-			   bool showConsoleWindow,
-			   int consoleWindowPosition,
-			   int consoleWindowScreen,
-			   int pauseBefore,
-			   int pauseAfter,
-               Tools::Version actionaVersion,
-			   Tools::Version scriptVersion,
-			   bool isActExec,
-			   QStandardItemModel *consoleModel)
-	{
-		mScript = script;
-		mScriptEngine = new QScriptEngine(this);
-
-		for(QString extension: mScriptEngine->availableExtensions())
-			mScriptEngine->importExtension(extension);
-		
-		mActionFactory = actionFactory;
-		mShowExecutionWindow = showExecutionWindow;
-		mExecutionWindowPosition = executionWindowPosition;
-		mExecutionWindowScreen = executionWindowScreen;
-		mShowConsoleWindow = showConsoleWindow;
-		mConsoleWindowPosition = consoleWindowPosition;
-		mConsoleWindowScreen = consoleWindowScreen;
-		mPauseBefore = pauseBefore;
-		mPauseAfter = pauseAfter;
-		mCurrentActionIndex = 0;
-		mExecutionStarted = false;
-		mExecutionEnded = false;
-		mExecuteOnlySelection = false;
-		mProgressDialog = 0;
-		mActiveActionsCount = 0;
-		mExecutionPaused = false;
-        mActionaVersion = actionaVersion;
-		mScriptVersion = scriptVersion;
-		mIsActExec = isActExec;
-
-        Code::setupPrettyPrinting(*mScriptEngine);
-		
-		mScriptEngineDebugger.attachTo(mScriptEngine);
-		mDebuggerWindow = mScriptEngineDebugger.standardWindow();
-
-		mScriptAgent = new ScriptAgent(mScriptEngine);
-
-		connect(mScriptAgent, SIGNAL(executionStopped()), this, SLOT(stopExecution()));
-		connect(mScriptAgent, SIGNAL(evaluationStarted()), mExecutionWindow, SLOT(enableDebug()));
-		connect(mScriptAgent, SIGNAL(evaluationStopped()), mExecutionWindow, SLOT(disableDebug()));
-
-		QScriptEngineAgent *debuggerAgent = mScriptEngine->agent();
-		mScriptEngine->setAgent(mScriptAgent);
-		mScriptAgent->setDebuggerAgent(debuggerAgent);
-		
-		mConsoleWidget->setup(consoleModel);
-		
-		mExecutionTimer.setSingleShot(false);
-		mExecutionTimer.setInterval(5);
-		mConsoleWidget->updateClearButton();
-	}
-	
-    ActionTools::ActionInstance *Executer::currentActionInstance() const
-    {
-        if(mCurrentActionIndex < 0 || mCurrentActionIndex >= mScript->actionCount())
-            return 0;
-
-        return mScript->actionAt(mCurrentActionIndex);
-    }
 
 	void printCall(QScriptContext *context, ActionTools::ConsoleWidget::Type type)
 	{
@@ -165,7 +62,7 @@ namespace LibExecuter
 
 		if(!agent)
 			return;
-		
+
 		for(int argumentIndex = 0; argumentIndex < context->argumentCount(); ++argumentIndex)
 			message += context->argument(argumentIndex).toString();
 
@@ -187,8 +84,8 @@ namespace LibExecuter
 
 				executer->consoleWidget()->addUserLine(message,
 													   currentActionRuntimeId,
-													   context->engine()->globalObject().property(QStringLiteral("currentParameter")).toString(),
-													   context->engine()->globalObject().property(QStringLiteral("currentSubParameter")).toString(),
+													   context->activationObject().property(QStringLiteral("currentParameter")).toString(),
+													   context->activationObject().property(QStringLiteral("currentSubParameter")).toString(),
 													   agent->currentLine(),
 													   agent->currentColumn(),
 													   context->backtrace(),
@@ -239,88 +136,205 @@ namespace LibExecuter
 		return engine->undefinedValue();
 	}
 
-    QScriptValue clearConsoleFunction(QScriptContext *context, QScriptEngine *engine)
+	QScriptValue clearConsoleFunction(QScriptContext *context, QScriptEngine *engine)
+	{
+		if(!Executer::isExecuterRunning())
+			return QScriptValue();
+
+		QApplication::processEvents();//Call this to prevent UI freeze when calling clear often
+
+		QScriptValue calleeData = context->callee().data();
+		Executer *executer = qobject_cast<Executer *>(calleeData.toQObject());
+
+		executer->consoleWidget()->clearExceptSeparators();
+
+		return engine->undefinedValue();
+	}
+
+	QScriptValue callProcedureFunction(QScriptContext *context, QScriptEngine *engine)
+	{
+		if(!Executer::isExecuterRunning())
+			return QScriptValue();
+
+		if(context->argumentCount() < 1)
+			return engine->undefinedValue();
+
+		QScriptValue calleeData = context->callee().data();
+		Executer *executer = qobject_cast<Executer *>(calleeData.toQObject());
+		ActionTools::ActionInstance *currentActionInstance = executer->currentActionInstance();
+
+		if(currentActionInstance)
+			currentActionInstance->callProcedure(context->argument(0).toString());
+
+		return engine->undefinedValue();
+	}
+	
+	Executer::Executer(QObject *parent)
+		: QObject(parent),
+		mExecutionWindow(new ExecutionWindow()),
+		mConsoleWidget(new ActionTools::ConsoleWidget()),
+		mScriptEngine(0),
+		mScriptAgent(0),
+		mHasExecuted(false),
+        mPauseInterrupt(false),
+        mShowDebuggerOnCodeError(true)
+	{
+		connect(mExecutionWindow, SIGNAL(canceled()), this, SLOT(stopExecution()));
+		connect(mExecutionWindow, SIGNAL(paused()), this, SLOT(pauseExecution()));
+		connect(mExecutionWindow, SIGNAL(debug()), this, SLOT(debugExecution()));
+		connect(&mExecutionTimer, SIGNAL(timeout()), this, SLOT(updateTimerProgress()));
+		connect(&mScriptEngineDebugger, SIGNAL(evaluationSuspended()), mExecutionWindow, SLOT(onEvaluationPaused()));
+		connect(&mScriptEngineDebugger, SIGNAL(evaluationResumed()), mExecutionWindow, SLOT(onEvaluationResumed()));
+		connect(&mScriptEngineDebugger, SIGNAL(evaluationSuspended()), this, SLOT(executionPaused()));
+		connect(&mScriptEngineDebugger, SIGNAL(evaluationResumed()), this, SLOT(executionResumed()));
+
+		mScriptEngineDebugger.setAutoShowStandardWindow(false);
+
+		mConsoleWidget->setWindowFlags(Qt::Tool |
+					   Qt::WindowStaysOnTopHint |
+					   Qt::CustomizeWindowHint |
+					   Qt::WindowTitleHint);
+
+		mScriptEngine = new QScriptEngine(this);
+
+		for(QString extension: mScriptEngine->availableExtensions())
+			mScriptEngine->importExtension(extension);
+
+		Code::CodeTools::addClassToScriptEngine<CodeActiona>(QStringLiteral("Actiona"), mScriptEngine);
+		CodeActiona::setActExec(mIsActExec);
+		CodeActiona::setActionaVersion(mActionaVersion);
+		CodeActiona::setScriptVersion(mScriptVersion);
+		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::version, QStringLiteral("version"), mScriptEngine);
+		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::scriptVersion, QStringLiteral("scriptVersion"), mScriptEngine);
+		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::isActExec, QStringLiteral("isActExec"), mScriptEngine);
+		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::isActiona, QStringLiteral("isActiona"), mScriptEngine);
+
+		mScriptAgent = new ScriptAgent(mScriptEngine);
+
+		connect(mScriptAgent, SIGNAL(executionStopped()), this, SLOT(stopExecution()));
+		connect(mScriptAgent, SIGNAL(evaluationStarted()), mExecutionWindow, SLOT(enableDebug()));
+		connect(mScriptAgent, SIGNAL(evaluationStopped()), mExecutionWindow, SLOT(disableDebug()));
+
+		QScriptEngineAgent *debuggerAgent = mScriptEngine->agent();
+		mScriptEngine->setAgent(mScriptAgent);
+		mScriptAgent->setDebuggerAgent(debuggerAgent);
+
+		QScriptValue script = mScriptEngine->newObject();
+		QScriptValue callProcedureFun = mScriptEngine->newFunction(callProcedureFunction);
+		callProcedureFun.setData(mScriptEngine->newQObject(this));
+		script.setProperty(QStringLiteral("callProcedure"), callProcedureFun);
+
+		QScriptValue console = mScriptEngine->newObject();
+		mScriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("Console"), console, QScriptValue::ReadOnly);
+
+		QScriptValue function = mScriptEngine->newFunction(printFunction);
+		function.setData(mScriptEngine->newQObject(this));
+		console.setProperty(QStringLiteral("print"), function);
+
+		function = mScriptEngine->newFunction(printWarningFunction);
+		function.setData(mScriptEngine->newQObject(this));
+		console.setProperty(QStringLiteral("printWarning"), function);
+
+		function = mScriptEngine->newFunction(printErrorFunction);
+		function.setData(mScriptEngine->newQObject(this));
+		console.setProperty(QStringLiteral("printError"), function);
+
+		function = mScriptEngine->newFunction(clearConsoleFunction);
+		function.setData(mScriptEngine->newQObject(this));
+		console.setProperty(QStringLiteral("clear"), function);
+	}
+
+	Executer::~Executer()
+	{
+		delete mExecutionWindow;
+		delete mConsoleWidget;
+	}
+
+	void Executer::setup(ActionTools::ActionFactory *actionFactory)
+	{
+		mActionFactory = actionFactory;
+
+		mScriptAgent->setContext(ScriptAgent::ActionInit);
+		CodeInitializer::initialize(mScriptEngine, mScriptAgent, mActionFactory);
+		mScriptAgent->setContext(ScriptAgent::Parameters);
+	}
+	
+	void Executer::setup(ActionTools::Script *script,
+			   ActionTools::ActionFactory *actionFactory,
+			   bool showExecutionWindow,
+			   int executionWindowPosition,
+			   int executionWindowScreen,
+			   bool showConsoleWindow,
+			   int consoleWindowPosition,
+			   int consoleWindowScreen,
+			   int pauseBefore,
+			   int pauseAfter,
+               Tools::Version actionaVersion,
+			   Tools::Version scriptVersion,
+			   bool isActExec,
+			   QStandardItemModel *consoleModel)
+	{
+		mScript = script;
+
+		mActionFactory = actionFactory;
+		mShowExecutionWindow = showExecutionWindow;
+		mExecutionWindowPosition = executionWindowPosition;
+		mExecutionWindowScreen = executionWindowScreen;
+		mShowConsoleWindow = showConsoleWindow;
+		mConsoleWindowPosition = consoleWindowPosition;
+		mConsoleWindowScreen = consoleWindowScreen;
+		mPauseBefore = pauseBefore;
+		mPauseAfter = pauseAfter;
+		mCurrentActionIndex = 0;
+		mExecutionStarted = false;
+		mExecutionEnded = false;
+		mExecuteOnlySelection = false;
+		mProgressDialog = 0;
+		mActiveActionsCount = 0;
+		mExecutionPaused = false;
+        mActionaVersion = actionaVersion;
+		mScriptVersion = scriptVersion;
+		mIsActExec = isActExec;
+
+        Code::setupPrettyPrinting(*mScriptEngine);
+		
+		mScriptEngineDebugger.attachTo(mScriptEngine);
+		mDebuggerWindow = mScriptEngineDebugger.standardWindow();
+		
+		mConsoleWidget->setup(consoleModel);
+		
+		mExecutionTimer.setSingleShot(false);
+		mExecutionTimer.setInterval(5);
+		mConsoleWidget->updateClearButton();
+	}
+	
+    ActionTools::ActionInstance *Executer::currentActionInstance() const
     {
-        if(!Executer::isExecuterRunning())
-            return QScriptValue();
+        if(mCurrentActionIndex < 0 || mCurrentActionIndex >= mScript->actionCount())
+            return 0;
 
-        QApplication::processEvents();//Call this to prevent UI freeze when calling clear often
-
-        QScriptValue calleeData = context->callee().data();
-        Executer *executer = qobject_cast<Executer *>(calleeData.toQObject());
-
-        executer->consoleWidget()->clearExceptSeparators();
-
-        return engine->undefinedValue();
-    }
-
-    QScriptValue callProcedureFunction(QScriptContext *context, QScriptEngine *engine)
-    {
-        if(!Executer::isExecuterRunning())
-            return QScriptValue();
-
-        if(context->argumentCount() < 1)
-            return engine->undefinedValue();
-
-        QScriptValue calleeData = context->callee().data();
-        Executer *executer = qobject_cast<Executer *>(calleeData.toQObject());
-        ActionTools::ActionInstance *currentActionInstance = executer->currentActionInstance();
-
-        if(currentActionInstance)
-            currentActionInstance->callProcedure(context->argument(0).toString());
-
-        return engine->undefinedValue();
+        return mScript->actionAt(mCurrentActionIndex);
     }
 
     bool Executer::startExecution(bool onlySelection, const QString &filename)
 	{
 		Q_ASSERT(mScriptAgent);
 		Q_ASSERT(mScriptEngine);
+
+		mScriptEngine->pushContext();
+
+		QScriptValue script = mScriptEngine->newObject();
+		mScriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("Script"), script, QScriptValue::ReadOnly);
+		script.setProperty(QStringLiteral("nextLine"), 1);
+		script.setProperty(QStringLiteral("doNotResetPreviousActions"), false);
+		script.setProperty(QStringLiteral("line"), 1, QScriptValue::ReadOnly);
 		
 	#ifdef ACT_PROFILE
 		Tools::HighResolutionTimer timer("Executer::startExecution");
 	#endif
 
-		Code::CodeTools::addClassToScriptEngine<CodeActiona>(QStringLiteral("Actiona"), mScriptEngine);
-        CodeActiona::setActExec(mIsActExec);
-        CodeActiona::setActionaVersion(mActionaVersion);
-        CodeActiona::setScriptVersion(mScriptVersion);
-		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::version, QStringLiteral("version"), mScriptEngine);
-		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::scriptVersion, QStringLiteral("scriptVersion"), mScriptEngine);
-		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::isActExec, QStringLiteral("isActExec"), mScriptEngine);
-		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Actiona"), &CodeActiona::isActiona, QStringLiteral("isActiona"), mScriptEngine);
-		
-		mScriptAgent->setContext(ScriptAgent::ActionInit);
-        CodeInitializer::initialize(mScriptEngine, mScriptAgent, mActionFactory, filename);
-		mScriptAgent->setContext(ScriptAgent::Parameters);
-		
-        QScriptValue script = mScriptEngine->newObject();
-		mScriptEngine->globalObject().setProperty(QStringLiteral("Script"), script, QScriptValue::ReadOnly);
-		script.setProperty(QStringLiteral("nextLine"), 1);
-		script.setProperty(QStringLiteral("doNotResetPreviousActions"), false);
-		script.setProperty(QStringLiteral("line"), 1, QScriptValue::ReadOnly);
-        QScriptValue callProcedureFun = mScriptEngine->newFunction(callProcedureFunction);
-        callProcedureFun.setData(mScriptEngine->newQObject(this));
-		script.setProperty(QStringLiteral("callProcedure"), callProcedureFun);
-
-		QScriptValue console = mScriptEngine->newObject();
-		mScriptEngine->globalObject().setProperty(QStringLiteral("Console"), console, QScriptValue::ReadOnly);
-
-        QScriptValue function = mScriptEngine->newFunction(printFunction);
-        function.setData(mScriptEngine->newQObject(this));
-		console.setProperty(QStringLiteral("print"), function);
-
-        function = mScriptEngine->newFunction(printWarningFunction);
-        function.setData(mScriptEngine->newQObject(this));
-		console.setProperty(QStringLiteral("printWarning"), function);
-
-        function = mScriptEngine->newFunction(printErrorFunction);
-        function.setData(mScriptEngine->newQObject(this));
-		console.setProperty(QStringLiteral("printError"), function);
-
-        function = mScriptEngine->newFunction(clearConsoleFunction);
-        function.setData(mScriptEngine->newQObject(this));
-		console.setProperty(QStringLiteral("clear"), function);
+		QScriptValue executionObject = mScriptEngine->currentContext()->activationObject().property(QStringLiteral("Execution"));
+		executionObject.setProperty(QStringLiteral("filename"), filename, QScriptValue::ReadOnly);
 
 		mExecuteOnlySelection = onlySelection;
 		mCurrentActionIndex = 0;
@@ -364,7 +378,7 @@ namespace LibExecuter
                 break;
             }
 
-            mScriptEngine->globalObject().setProperty(key, value, QScriptValue::ReadOnly | QScriptValue::Undeletable);
+			mScriptEngine->currentContext()->activationObject().setProperty(key, value, QScriptValue::ReadOnly | QScriptValue::Undeletable);
         }
 
 		for(int actionIndex = 0; actionIndex < mScript->actionCount(); ++actionIndex)
@@ -484,7 +498,7 @@ namespace LibExecuter
 			else
 				value = scriptParameter.value();
 
-			mScriptEngine->globalObject().setProperty(scriptParameter.name(), value, QScriptValue::ReadOnly | QScriptValue::Undeletable);
+			mScriptEngine->currentContext()->activationObject().setProperty(scriptParameter.name(), value, QScriptValue::ReadOnly | QScriptValue::Undeletable);
 		}
 
 		if(!initSucceeded || mScript->actionCount() == 0)
@@ -552,6 +566,8 @@ namespace LibExecuter
 	{
         if(!mExecutionStarted)
 			return;
+
+		mScriptEngine->popContext();
 		
 		mScriptAgent->pause(false);
 		mScriptAgent->stopExecution(false);
@@ -576,17 +592,6 @@ namespace LibExecuter
 			mScript->actionAt(actionIndex)->stopLongTermExecution();
 
 		mScriptEngineDebugger.detach();
-		
-        if(mScriptAgent)
-        {
-            mScriptAgent->deleteLater();
-            mScriptAgent = 0;
-        }
-        if(mScriptEngine)
-        {
-            mScriptEngine->deleteLater();
-            mScriptEngine = 0;
-        }
 
 		delete mProgressDialog;
 		mProgressDialog = 0;
@@ -662,7 +667,7 @@ namespace LibExecuter
 				}
 				else
 				{
-					QScriptValue script = mScriptEngine->globalObject().property(QStringLiteral("Script"));
+					QScriptValue script = mScriptEngine->currentContext()->activationObject().property(QStringLiteral("Script"));
 					script.setProperty(QStringLiteral("nextLine"), mScriptEngine->newVariant(QVariant(exceptionActionInstance.line())));
 					actionExecutionEnded();
 					shouldStopExecution = false;
@@ -686,8 +691,8 @@ namespace LibExecuter
 
 			mConsoleWidget->addActionLine(finalMessage + message,
 										currentActionRuntimeId,
-										mScriptEngine->globalObject().property(QStringLiteral("currentParameter")).toString(),
-										mScriptEngine->globalObject().property(QStringLiteral("currentSubParameter")).toString(),
+										mScriptEngine->currentContext()->activationObject().property(QStringLiteral("currentParameter")).toString(),
+										mScriptEngine->currentContext()->activationObject().property(QStringLiteral("currentSubParameter")).toString(),
 										mScriptAgent->currentLine(),
 										mScriptAgent->currentColumn(),
 										exceptionType);
@@ -729,7 +734,7 @@ namespace LibExecuter
 	{
 		mExecutionEnded = false;
 
-		QScriptValue script = mScriptEngine->globalObject().property(QStringLiteral("Script"));
+		QScriptValue script = mScriptEngine->currentContext()->activationObject().property(QStringLiteral("Script"));
 		QString nextLineString = script.property(QStringLiteral("nextLine")).toString();
 		int previousLine = mCurrentActionIndex;
 
@@ -936,8 +941,8 @@ namespace LibExecuter
 
 		consoleWidget()->addUserLine(text,
 									   currentActionRuntimeId,
-									   mScriptEngine->globalObject().property(QStringLiteral("currentParameter")).toString(),
-									   mScriptEngine->globalObject().property(QStringLiteral("currentSubParameter")).toString(),
+									   mScriptEngine->currentContext()->activationObject().property(QStringLiteral("currentParameter")).toString(),
+									   mScriptEngine->currentContext()->activationObject().property(QStringLiteral("currentSubParameter")).toString(),
 									   mScriptAgent->currentLine(),
 									   mScriptAgent->currentColumn(),
 									   mScriptEngine->currentContext()->backtrace(),
@@ -1024,7 +1029,7 @@ namespace LibExecuter
 		if(nextLine > mScript->actionCount())
 			nextLine = -1;
 
-		QScriptValue script = mScriptEngine->globalObject().property(QStringLiteral("Script"));
+		QScriptValue script = mScriptEngine->currentContext()->activationObject().property(QStringLiteral("Script"));
 		script.setProperty(QStringLiteral("nextLine"), mScriptEngine->newVariant(QVariant(nextLine)));
 		script.setProperty(QStringLiteral("line"), mCurrentActionIndex + 1, QScriptValue::ReadOnly);
 

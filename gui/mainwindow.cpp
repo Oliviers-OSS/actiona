@@ -345,7 +345,10 @@ void MainWindow::postInit()
 #endif
 
 		QScriptEngine engine;
-        LibExecuter::CodeInitializer::initialize(&engine, 0, mActionFactory, mCurrentFile);
+		LibExecuter::CodeInitializer::initialize(&engine, 0, mActionFactory);
+
+		QScriptValue executionObject = engine.currentContext()->activationObject().property(QStringLiteral("Execution"));
+		executionObject.setProperty(QStringLiteral("filename"), mCurrentFile, QScriptValue::ReadOnly);
 
 		mCompletionModel->appendRow(new QStandardItem(QIcon(QStringLiteral(":/icons/class.png")), QStringLiteral("include")));
 		mCompletionModel->appendRow(new QStandardItem(QIcon(QStringLiteral(":/icons/class.png")), QStringLiteral("loadUI")));
@@ -414,6 +417,8 @@ void MainWindow::postInit()
 #endif
         fillNewActionModel();
 	}
+
+	mExecuter.setup(mActionFactory);
 
 	statusBar()->showMessage(tr("Ready, loaded %1 actions from %2 packs").arg(mActionFactory->actionDefinitionCount()).arg(mActionFactory->actionPackCount()));
 

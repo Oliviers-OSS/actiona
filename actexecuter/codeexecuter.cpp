@@ -72,7 +72,10 @@ bool CodeExecuter::start(QIODevice *device, const QString &filename)
 	device->close();
 	
 	mScriptAgent->setContext(LibExecuter::ScriptAgent::ActionInit);
-    LibExecuter::CodeInitializer::initialize(mScriptEngine, mScriptAgent, actionFactory(), filename);
+	LibExecuter::CodeInitializer::initialize(mScriptEngine, mScriptAgent, actionFactory());
+
+	QScriptValue executionObject = mScriptEngine->currentContext()->activationObject().property(QStringLiteral("Execution"));
+	executionObject.setProperty(QStringLiteral("filename"), filename, QScriptValue::ReadOnly);
 
 	Code::CodeTools::addClassToScriptEngine<LibExecuter::CodeStdio>(QStringLiteral("Console"), mScriptEngine);
 	Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Console"), &LibExecuter::CodeStdio::print, QStringLiteral("print"), mScriptEngine);

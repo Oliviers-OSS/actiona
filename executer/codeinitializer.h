@@ -38,8 +38,7 @@ namespace LibExecuter
 	public:
         static void initialize(QScriptEngine *scriptEngine,
                                ScriptAgent *scriptAgent,
-                               ActionTools::ActionFactory *actionFactory,
-                               const QString &filename);
+							   ActionTools::ActionFactory *actionFactory);
 	};
 }
 

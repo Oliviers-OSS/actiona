@@ -60,7 +60,7 @@ namespace ActionTools
 		void addCodeClass(const QString &objectName, QScriptEngine *scriptEngine) const
 		{
 			QScriptValue metaObject = scriptEngine->newQMetaObject(&T::staticMetaObject, scriptEngine->newFunction(&T::constructor));
-			scriptEngine->globalObject().setProperty(objectName, metaObject);
+			scriptEngine->currentContext()->activationObject().setProperty(objectName, metaObject);
 		}
 
 		void addCodeStaticMethod(QScriptEngine::FunctionSignature method, const QString &objectName, const QString &methodName, QScriptEngine *scriptEngine) const;

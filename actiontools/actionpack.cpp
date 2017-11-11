@@ -30,11 +30,11 @@ namespace ActionTools
 
 	void ActionPack::addCodeStaticMethod(QScriptEngine::FunctionSignature method, const QString &objectName, const QString &methodName, QScriptEngine *scriptEngine) const
 	{
-		QScriptValue classMetaObject = scriptEngine->globalObject().property(objectName);
+		QScriptValue classMetaObject = scriptEngine->currentContext()->activationObject().property(objectName);
 		if(!classMetaObject.isValid())
 		{
 			classMetaObject = scriptEngine->newObject();
-			scriptEngine->globalObject().setProperty(objectName, classMetaObject);
+			scriptEngine->currentContext()->activationObject().setProperty(objectName, classMetaObject);
 		}
 
 		classMetaObject.setProperty(methodName, scriptEngine->newFunction(method));

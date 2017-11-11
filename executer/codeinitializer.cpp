@@ -49,7 +49,7 @@ namespace
         if(QDir::isAbsolutePath(filename))
             return filename;
 
-		QScriptValue executionObject = engine->globalObject().property(QStringLiteral("Execution"));
+		QScriptValue executionObject = engine->currentContext()->activationObject().property(QStringLiteral("Execution"));
         if(executionObject.isNull())
             return filename;
 
@@ -107,15 +107,15 @@ namespace LibExecuter
 		return engine->evaluate(fileContent, filename);
 	}
 
-    void CodeInitializer::initialize(QScriptEngine *scriptEngine, ScriptAgent *scriptAgent, ActionTools::ActionFactory *actionFactory, const QString &filename)
+	void CodeInitializer::initialize(QScriptEngine *scriptEngine, ScriptAgent *scriptAgent, ActionTools::ActionFactory *actionFactory)
 	{
 		scriptEngine->setProcessEventsInterval(50);
 
 		QScriptValue loadUIFunc = scriptEngine->newFunction(&loadUIFunction);
-		scriptEngine->globalObject().setProperty(QStringLiteral("loadUI"), loadUIFunc);
+		scriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("loadUI"), loadUIFunc);
 
 		QScriptValue includeFunc = scriptEngine->newFunction(&includeFunction);
-		scriptEngine->globalObject().setProperty(QStringLiteral("include"), includeFunc);
+		scriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("include"), includeFunc);
 
 		Code::Window::registerClass(scriptEngine);
 		Code::RawData::registerClass(scriptEngine);
@@ -132,9 +132,6 @@ namespace LibExecuter
 		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Execution"), &CodeExecution::pause, QStringLiteral("pause"), scriptEngine);
 		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Execution"), &CodeExecution::sleep, QStringLiteral("sleep"), scriptEngine);
 		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Execution"), &CodeExecution::stop, QStringLiteral("stop"), scriptEngine);
-
-		QScriptValue executionObject = scriptEngine->globalObject().property(QStringLiteral("Execution"));
-		executionObject.setProperty(QStringLiteral("filename"), filename, QScriptValue::ReadOnly);
 
 		Code::CodeTools::addClassToScriptEngine<CodeStdio>(QStringLiteral("Stdio"), scriptEngine);
 		Code::CodeTools::addClassGlobalFunctionToScriptEngine(QStringLiteral("Stdio"), &CodeStdio::print, QStringLiteral("print"), scriptEngine);

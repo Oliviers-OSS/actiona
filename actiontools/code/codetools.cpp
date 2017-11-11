@@ -27,11 +27,11 @@ namespace Code
 {
 	void CodeTools::addClassGlobalFunctionToScriptEngine(const QString &className, QScriptEngine::FunctionSignature function, const QString &functionName, QScriptEngine *scriptEngine)
 	{
-		QScriptValue classMetaObject = scriptEngine->globalObject().property(className);
+		QScriptValue classMetaObject = scriptEngine->currentContext()->activationObject().property(className);
 		if(!classMetaObject.isValid())
 		{
 			classMetaObject = scriptEngine->newObject();
-			scriptEngine->globalObject().setProperty(className, classMetaObject);
+			scriptEngine->currentContext()->activationObject().setProperty(className, classMetaObject);
 		}
 
 		classMetaObject.setProperty(functionName, scriptEngine->newFunction(function));

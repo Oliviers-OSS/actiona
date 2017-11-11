@@ -29,12 +29,12 @@ namespace Code
 {
 	void CodeClass::throwError(QScriptContext *context, QScriptEngine *engine, const QString &errorType, const QString &message, const QString &parent)
 	{
-		QScriptValue errorTypeValue = engine->globalObject().property(errorType);
+		QScriptValue errorTypeValue = engine->currentContext()->activationObject().property(errorType);
 		if(!errorTypeValue.isValid())
 		{
 			errorTypeValue = engine->newFunction(emptyFunction);
-			engine->globalObject().setProperty(errorType, errorTypeValue);
-			errorTypeValue.setProperty(QStringLiteral("prototype"), engine->globalObject().property(parent).construct());
+			engine->currentContext()->activationObject().setProperty(errorType, errorTypeValue);
+			errorTypeValue.setProperty(QStringLiteral("prototype"), engine->currentContext()->activationObject().property(parent).construct());
 		}
 
 		QScriptValue thrownError = errorTypeValue.construct();

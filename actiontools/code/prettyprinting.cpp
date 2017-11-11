@@ -97,9 +97,9 @@ namespace Code
     void setupPrettyPrinting(QScriptEngine &scriptEngine)
     {
         // Replace the default toString() functions for Array and Object with a more readable one
-		QScriptValue arrayPrototypeScriptValue = scriptEngine.globalObject().property(QStringLiteral("Array")).property(QStringLiteral("prototype"));
+		QScriptValue arrayPrototypeScriptValue = scriptEngine.currentContext()->activationObject().property(QStringLiteral("Array")).property(QStringLiteral("prototype"));
 		arrayPrototypeScriptValue.setProperty(QStringLiteral("toString"), scriptEngine.newFunction(toStringFunction));
-		QScriptValue objectPrototypeScriptValue = scriptEngine.globalObject().property(QStringLiteral("Object")).property(QStringLiteral("prototype"));
+		QScriptValue objectPrototypeScriptValue = scriptEngine.currentContext()->activationObject().property(QStringLiteral("Object")).property(QStringLiteral("prototype"));
 		objectPrototypeScriptValue.setProperty(QStringLiteral("toString"), scriptEngine.newFunction(toStringFunction));
     }
 }

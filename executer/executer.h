@@ -54,6 +54,7 @@ namespace LibExecuter
 		Executer(QObject *parent = 0);
 		~Executer();
 		
+		void setup(ActionTools::ActionFactory *actionFactory);
 		void setup(ActionTools::Script *script,
 				   ActionTools::ActionFactory *actionFactory,
 				   bool showExecutionWindow,

@@ -693,7 +693,7 @@ namespace ActionTools
 
     void ActionInstance::setNextLine(const QString &nextLine, bool doNotResetPreviousActions)
 	{
-		QScriptValue scriptValue = d->scriptEngine->globalObject().property(QStringLiteral("Script"));
+		QScriptValue scriptValue = d->scriptEngine->currentContext()->activationObject().property(QStringLiteral("Script"));
 		scriptValue.setProperty(QStringLiteral("nextLine"), d->scriptEngine->newVariant(QVariant(nextLine)));
 		scriptValue.setProperty(QStringLiteral("doNotResetPreviousActions"), doNotResetPreviousActions);
 	}
@@ -714,7 +714,7 @@ namespace ActionTools
 			back.setProperty(index, stringList.at(index));
 
         if(!name.isEmpty() && NameRegExp.exactMatch(name))
-			d->scriptEngine->globalObject().setProperty(name, back);
+			d->scriptEngine->currentContext()->activationObject().setProperty(name, back);
 	}
 
 	void ActionInstance::setArrayKeyValue(const QString &name, const QHash<QString, QString> &hashKeyValue)
@@ -737,7 +737,7 @@ namespace ActionTools
 	void ActionInstance::setVariable(const QString &name, const QScriptValue &value)
 	{
         if(!name.isEmpty() && NameRegExp.exactMatch(name))
-			d->scriptEngine->globalObject().setProperty(name, value);
+			d->scriptEngine->currentContext()->activationObject().setProperty(name, value);
 	}
 
     QScriptValue ActionInstance::variable(const QString &name)
@@ -745,13 +745,13 @@ namespace ActionTools
         if(name.isEmpty() || !NameRegExp.exactMatch(name))
             return QScriptValue();
 
-        return d->scriptEngine->globalObject().property(name);
+		return d->scriptEngine->currentContext()->activationObject().property(name);
 	}
 
 	void ActionInstance::setCurrentParameter(const QString &parameterName, const QString &subParameterName)
 	{
-		d->scriptEngine->globalObject().setProperty(QStringLiteral("currentParameter"), parameterName, QScriptValue::ReadOnly);
-		d->scriptEngine->globalObject().setProperty(QStringLiteral("currentSubParameter"), subParameterName, QScriptValue::ReadOnly);
+		d->scriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("currentParameter"), parameterName, QScriptValue::ReadOnly);
+		d->scriptEngine->currentContext()->activationObject().setProperty(QStringLiteral("currentSubParameter"), subParameterName, QScriptValue::ReadOnly);
 	}
 
 	SubParameter ActionInstance::retreiveSubParameter(const QString &parameterName, const QString &subParameterName)
@@ -765,7 +765,7 @@ namespace ActionTools
         {
             QString stringValue = back.value();
             QString variableName = stringValue.right(stringValue.size() - 1);
-            const QScriptValue &value = d->scriptEngine->globalObject().property(variableName);
+			const QScriptValue &value = d->scriptEngine->currentContext()->activationObject().property(variableName);
 
             if(value.isValid())
             {
@@ -835,7 +835,7 @@ namespace ActionTools
 				if(VariableRegExp.indexIn(toEvaluate, position) != -1)
 				{
 					QString foundVariableName = VariableRegExp.cap(1);
-					QScriptValue foundVariable = d->scriptEngine->globalObject().property(foundVariableName);
+					QScriptValue foundVariable = d->scriptEngine->currentContext()->activationObject().property(foundVariableName);
 
 					position += foundVariableName.length();
 
