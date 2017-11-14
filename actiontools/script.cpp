@@ -603,8 +603,8 @@ namespace ActionTools
 								QString subParameterName = attributes.value(QStringLiteral("name")).toString();
 								SubParameter subParameterData;
 
-								subParameterData.setCode(QVariant(stream.attributes().value(QStringLiteral("code")).toString()).toBool());
-								subParameterData.setValue(stream.readElementText());
+								bool code = QVariant(stream.attributes().value(QStringLiteral("code")).toString()).toBool();
+								subParameterData.setValue(code, stream.readElementText());
 
 								parameterData.subParameters().insert(subParameterName, subParameterData);
 							}

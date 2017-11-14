@@ -41,8 +41,7 @@ namespace ActionTools
 		s >> code;
 		s >> value;
 
-		subParameter.setCode(code);
-		subParameter.setValue(value);
+		subParameter.setValue(code, value);
 
 		return s;
 	}

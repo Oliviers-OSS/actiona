@@ -314,7 +314,6 @@ namespace ActionTools
 
 	private:
 		SubParameter retreiveSubParameter(const QString &parameterName, const QString &subParameterName);
-        QScriptValue evaluateCode(bool &ok, const QString &toEvaluate);
         QScriptValue evaluateCode(bool &ok, const SubParameter &toEvaluate);
 
 		QString evaluateVariableArray(bool &ok, const QScriptValue &scriptValue);

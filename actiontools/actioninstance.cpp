@@ -768,25 +768,22 @@ namespace ActionTools
 			const QScriptValue &value = d->scriptEngine->currentContext()->activationObject().property(variableName);
 
             if(value.isValid())
-            {
-                back.setCode(true);
-                back.setValue(variableName);
-            }
+				back.setValue(true, variableName);
         }
 
         return back;
 	}
 
-    QScriptValue ActionInstance::evaluateCode(bool &ok, const QString &toEvaluate)
-	{
+    QScriptValue ActionInstance::evaluateCode(bool &ok, const SubParameter &toEvaluate)
+    {
 		ok = true;
 
-        QScriptValue result = d->scriptEngine->evaluate(toEvaluate);
+		QScriptValue result = d->scriptEngine->evaluate(toEvaluate.program());
 		if(result.isError())
 		{
-            ok = false;
+			ok = false;
 
-            emit executionException(ActionException::CodeErrorException, result.toString());
+			emit executionException(ActionException::CodeErrorException, result.toString());
 			return QScriptValue();
 		}
 
@@ -797,12 +794,7 @@ namespace ActionTools
 			return QScriptValue();
 		}
 
-        return result;
-    }
-
-    QScriptValue ActionInstance::evaluateCode(bool &ok, const SubParameter &toEvaluate)
-    {
-        return evaluateCode(ok, toEvaluate.value());
+		return result;
     }
 
     QString ActionInstance::evaluateText(bool &ok, const QString &toEvaluate)

@@ -24,6 +24,7 @@
 
 #include <QSharedData>
 #include <QVariant>
+#include <QScriptProgram>
 
 namespace ActionTools
 {
@@ -35,25 +36,34 @@ namespace ActionTools
 			: QSharedData(other), code(other.code), value(other.value)	{}
 
 		bool code;
-        QString value;
+		QString value;
+		QScriptProgram program;
 	};
 
 	class ACTIONTOOLSSHARED_EXPORT SubParameter
 	{
 	public:
-        SubParameter(bool code = false, const QString &value = QString())
+		SubParameter(bool code = {}, const QString &value = {}, const QScriptProgram &program = {})
 			: d(new SubParameterData())
 		{
-			setCode(code);
-			setValue(value);
+			d->code = code;
+			d->value = value;
+			d->program = program;
 		}
 		SubParameter(const SubParameter &other) : d(other.d)			{}
 
 		bool isCode() const												{ return d->code; }
-        QString value() const											{ return d->value; }
+		QString value() const											{ return d->value; }
+		QScriptProgram program() const									{ return d->program; }
 
-		void setCode(bool code)											{ d->code = code; }
-        void setValue(const QString &value)                             { d->value = value; }
+		void setValue(bool code, const QString &value)
+		{
+			d->code = code;
+			d->value = value;
+
+			if(code)
+				d->program = {value};
+		}
 
 		bool operator == (const SubParameter &other) const				{ return (isCode() == other.isCode() && value() == other.value()); }
 		bool operator != (const SubParameter &other) const				{ return (isCode() != other.isCode() || value() != other.value()); }
