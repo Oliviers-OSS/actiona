@@ -11,10 +11,14 @@ set(ACT_MINIMUM_BOOST_VERSION 1.65)
 set(ACT_BUILD_NAME "" CACHE STRING "Build name")
 option(ACT_UPDATER "Build the Updater" ON)
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT result)
-if(result)
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+# Disable LTO/IPO with Clang because that breaks Qt's signals
+# See https://bugreports.qt.io/browse/QTBUG-43556
+if(NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT result)
+    if(result)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
 endif()
 
 set(CMAKE_CXX_STANDARD 11)
